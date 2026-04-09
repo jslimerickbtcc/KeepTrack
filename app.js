@@ -490,6 +490,25 @@ function renderIntegrationsModal() {
   renderIntegrationList($("slack-list"), slackIntegrations, "slack");
 }
 
+// ---------- Helpers ----------
+
+// Turn URLs in notes text into clickable links. The rest is escaped.
+function linkifyNotes(text) {
+  const urlRe = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRe);
+  return parts
+    .map((part) => {
+      if (urlRe.test(part)) {
+        const escaped = part.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        return `<a href="${escaped}" target="_blank" rel="noopener" class="source-link" onclick="event.stopPropagation()">Open in Gmail</a>`;
+      }
+      // Reset lastIndex since we reuse the regex.
+      urlRe.lastIndex = 0;
+      return part.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    })
+    .join("");
+}
+
 // ---------- Render ----------
 function render() {
   els.authArea.innerHTML = "";
@@ -628,7 +647,7 @@ function render() {
     if (t.notes) {
       const notesPreview = document.createElement("div");
       notesPreview.className = "notes-preview";
-      notesPreview.textContent = t.notes;
+      notesPreview.innerHTML = linkifyNotes(t.notes);
       body.append(notesPreview);
     }
 

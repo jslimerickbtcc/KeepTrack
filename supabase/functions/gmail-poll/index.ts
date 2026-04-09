@@ -53,13 +53,21 @@ async function refreshAccessToken(
 
 async function getLabelId(
   accessToken: string,
+  logs: string[],
 ): Promise<string | null> {
   const res = await fetch(
     "https://gmail.googleapis.com/gmail/v1/users/me/labels",
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  if (!res.ok) return null;
+  if (!res.ok) {
+    logs.push(`  Labels API error: ${res.status} ${await res.text()}`);
+    return null;
+  }
   const data = await res.json();
+  const userLabels = (data.labels ?? [])
+    .filter((l: { type: string }) => l.type === "user")
+    .map((l: { name: string; id: string }) => `${l.name} (${l.id})`);
+  logs.push(`  User labels: ${userLabels.join(", ") || "none"}`);
   const label = data.labels?.find(
     (l: { name: string }) => l.name.toLowerCase() === "todo",
   );
@@ -74,13 +82,13 @@ interface GmailMessage {
   };
 }
 
-async function listMessages(
+async function listThreads(
   accessToken: string,
   labelId: string,
   maxResults = 20,
 ): Promise<{ id: string }[]> {
   const url = new URL(
-    "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+    "https://gmail.googleapis.com/gmail/v1/users/me/threads",
   );
   url.searchParams.set("labelIds", labelId);
   url.searchParams.set("maxResults", String(maxResults));
@@ -90,19 +98,23 @@ async function listMessages(
   });
   if (!res.ok) return [];
   const data = await res.json();
-  return data.messages ?? [];
+  return data.threads ?? [];
 }
 
-async function getMessage(
+async function getThread(
   accessToken: string,
-  messageId: string,
+  threadId: string,
 ): Promise<GmailMessage | null> {
+  // Fetch the thread — the first message has the subject.
   const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=Subject`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=metadata&metadataHeaders=Subject`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!res.ok) return null;
-  return res.json();
+  const data = await res.json();
+  const firstMsg = data.messages?.[0];
+  if (!firstMsg) return null;
+  return { id: data.id, snippet: firstMsg.snippet, payload: firstMsg.payload };
 }
 
 // ---------- Main handler ----------
@@ -124,12 +136,16 @@ serve(async (_req: Request) => {
 
     let totalInserted = 0;
 
+    const logs: string[] = [];
+
     for (const row of integrations as TokenRow[]) {
       try {
+        logs.push(`Processing: ${row.label} (user ${row.user_id})`);
+
         // Refresh the access token each run.
         const refreshed = await refreshAccessToken(row.refresh_token);
         if (!refreshed) {
-          console.warn(`Skipping ${row.label} (user ${row.user_id}): token refresh failed`);
+          logs.push(`  SKIP: token refresh failed`);
           continue;
         }
         const accessToken = refreshed.access_token;
@@ -141,17 +157,19 @@ serve(async (_req: Request) => {
           .eq("id", row.id);
 
         // Find the "todo" label.
-        const labelId = await getLabelId(accessToken);
+        const labelId = await getLabelId(accessToken, logs);
         if (!labelId) {
-          console.warn(`Skipping ${row.label} (user ${row.user_id}): no "todo" label found`);
+          logs.push(`  SKIP: no "todo" label found`);
           continue;
         }
+        logs.push(`  Found "todo" label: ${labelId}`);
 
-        // List recent messages with that label.
-        const messageStubs = await listMessages(accessToken, labelId);
+        // List recent threads with that label (one per conversation).
+        const threadStubs = await listThreads(accessToken, labelId);
+        logs.push(`  Threads found: ${threadStubs.length}`);
 
-        for (const stub of messageStubs) {
-          // Check if we already imported this message.
+        for (const stub of threadStubs) {
+          // Deduplicate by thread ID (stored in gmail_message_id).
           const { data: existing } = await admin
             .from("tasks")
             .select("id")
@@ -159,22 +177,29 @@ serve(async (_req: Request) => {
             .eq("gmail_message_id", stub.id)
             .maybeSingle();
 
-          if (existing) continue; // Already imported.
+          if (existing) {
+            logs.push(`  Skipping thread ${stub.id}: already imported`);
+            continue;
+          }
 
-          // Fetch the message details for the subject line.
-          const msg = await getMessage(accessToken, stub.id);
+          // Fetch the thread to get the subject from the first message.
+          const thread = await getThread(accessToken, stub.id);
           const subject =
-            msg?.payload?.headers?.find((h) => h.name === "Subject")?.value ??
-            msg?.snippet ??
+            thread?.payload?.headers?.find((h) => h.name === "Subject")?.value ??
+            thread?.snippet ??
             "Gmail task";
 
-          const sourceUrl = `https://mail.google.com/mail/u/0/#inbox/${stub.id}`;
+          logs.push(`  Importing: "${subject}" (thread ${stub.id})`);
+          // Use #all instead of #inbox so the link works even if the message
+          // has been archived. This URL opens in the Gmail app on mobile.
+          const sourceUrl = `https://mail.google.com/mail/u/0/#all/${stub.id}`;
 
           const { error: insertErr } = await admin.from("tasks").insert({
             user_id: row.user_id,
             title: subject,
             gmail_message_id: stub.id,
             source_url: sourceUrl,
+            notes: `📧 ${sourceUrl}`,
             priority: "med",
           });
 
@@ -195,7 +220,7 @@ serve(async (_req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, inserted: totalInserted }),
+      JSON.stringify({ ok: true, inserted: totalInserted, logs }),
       { headers: { "Content-Type": "application/json" } },
     );
   } catch (err) {

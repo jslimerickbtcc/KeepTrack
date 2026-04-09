@@ -370,6 +370,16 @@ body {
   text-overflow: ellipsis;
 }
 
+.source-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
+
 .task .meta {
   display: flex;
   gap: 8px;
