@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Production defaults — safe to ship (anon key is public; RLS protects data).
 const DEFAULTS = {
   SUPABASE_URL: "https://dzdizortbzvfeiksfylp.supabase.co",
-  SUPABASE_ANON_KEY: "sb_publishable_VXC95soOBAVXHzvSMGO0BQ_ggtmY3Vv",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6ZGl6b3J0Ynp2ZmVpa3NmeWxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2Njc4MDAsImV4cCI6MjA5MTI0MzgwMH0.VxmK_7aXWLrROKFMBs7liQqqb3oAhOkdELxWaPVJbp4",
 };
 
 let supabase = null;

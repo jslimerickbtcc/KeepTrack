@@ -8,14 +8,14 @@
 // gmail-auth-callback after the user grants consent.
 //
 // Required env:
-//   SUPABASE_URL, SUPABASE_ANON_KEY (for JWT verification)
+//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto-injected)
 //   GOOGLE_CLIENT_ID
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID")!;
 
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-auth-callback`;
@@ -46,11 +46,10 @@ serve(async (req: Request) => {
       });
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    // Use the service role client to verify the user's JWT.
+    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const jwt = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
     if (authErr || !user) {
       return new Response(JSON.stringify({ error: "Invalid token" }), {
         status: 401,
