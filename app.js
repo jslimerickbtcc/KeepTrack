@@ -5,21 +5,29 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// Production defaults — safe to ship (anon key is public; RLS protects data).
+const DEFAULTS = {
+  SUPABASE_URL: "https://dzdizortbzvfeiksfylp.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_VXC95soOBAVXHzvSMGO0BQ_ggtmY3Vv",
+};
+
 let supabase = null;
 let config = null;
 
 try {
   const mod = await import("./config.js");
   config = mod.default ?? mod;
-  if (
-    config?.SUPABASE_URL &&
-    config?.SUPABASE_ANON_KEY &&
-    !config.SUPABASE_URL.includes("YOUR-PROJECT")
-  ) {
-    supabase = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
-  }
 } catch (_err) {
-  // mock mode
+  // No config.js — use production defaults (GitHub Pages).
+  config = DEFAULTS;
+}
+
+if (
+  config?.SUPABASE_URL &&
+  config?.SUPABASE_ANON_KEY &&
+  !config.SUPABASE_URL.includes("YOUR-PROJECT")
+) {
+  supabase = createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY);
 }
 
 const isMock = () => supabase === null;
