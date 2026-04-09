@@ -1,4 +1,4 @@
-// KeepTrack — static frontend (Phase 2.5)
+// KeepTrack — static frontend (Phase 3)
 //
 // Talks directly to Supabase for auth + data. Without ./config.js it falls
 // back to an in-memory mock so you can poke at the UI.
@@ -63,6 +63,19 @@ const els = {
   filterTag: $("filter-tag"),
   sortBy: $("sort-by"),
   manageTagsBtn: $("manage-tags-btn"),
+  integrationsBtn: $("integrations-btn"),
+  // Integrations modal
+  intModal: $("integrations-modal"),
+  gmailStatus: $("gmail-status"),
+  gmailConnect: $("gmail-connect"),
+  gmailDisconnect: $("gmail-disconnect"),
+  slackStatus: $("slack-status"),
+  slackDisconnect: $("slack-disconnect"),
+  slackTeamInput: $("slack-team-input"),
+  slackUserInput: $("slack-user-input"),
+  slackTokenInput: $("slack-token-input"),
+  slackSaveBtn: $("slack-save-btn"),
+  slackForm: $("slack-form"),
   // Edit modal
   editModal: $("edit-modal"),
   editForm: $("edit-form"),
@@ -95,6 +108,8 @@ let filterState = "open";
 let filterPriority = "all";
 let filterTag = "all";
 let sortBy = "due_at";
+let gmailIntegration = null; // { user_id, provider, access_token, ... } or null
+let slackIntegration = null;
 
 // ---------- Mock store ----------
 const mock = {
@@ -127,7 +142,11 @@ async function signIn() {
   }
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: window.location.origin + window.location.pathname },
+    options: {
+      redirectTo: window.location.origin + window.location.pathname,
+      scopes: "https://www.googleapis.com/auth/gmail.readonly",
+      queryParams: { access_type: "offline", prompt: "consent" },
+    },
   });
   if (error) alert("Sign-in failed: " + error.message);
 }
@@ -166,6 +185,8 @@ async function fetchAll() {
   if (isMock()) {
     indexTags(mock.tags);
     tasks = mock.tasks.map((t) => ({ ...t, tag_ids: [...(t.tag_ids ?? [])] }));
+    gmailIntegration = null;
+    slackIntegration = null;
     return;
   }
 
@@ -175,6 +196,7 @@ async function fetchAll() {
       .select("*, task_tags(tag_id)")
       .order("created_at", { ascending: false }),
     supabase.from("tags").select("id,name,color").order("name", { ascending: true }),
+    fetchIntegrations(),
   ]);
 
   if (tagsRes.error) console.error(tagsRes.error);
@@ -303,6 +325,139 @@ async function deleteTag(id) {
   }
   const { error } = await supabase.from("tags").delete().eq("id", id);
   if (error) alert("Delete tag failed: " + error.message);
+}
+
+// ---------- Integrations ----------
+async function fetchIntegrations() {
+  if (isMock()) {
+    gmailIntegration = null;
+    slackIntegration = null;
+    return;
+  }
+  const { data } = await supabase
+    .from("integrations")
+    .select("user_id, provider, access_token, refresh_token, scope, metadata, installed_at");
+  gmailIntegration = data?.find((i) => i.provider === "gmail") ?? null;
+  slackIntegration = data?.find((i) => i.provider === "slack") ?? null;
+}
+
+async function connectGmail() {
+  if (isMock()) return;
+  // The provider_token and provider_refresh_token come from the Google OAuth
+  // session — Supabase makes them available after sign-in with scopes.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const s = sessionData?.session;
+  if (!s?.provider_token) {
+    alert(
+      "Gmail access token not available. Please sign out and sign back in to grant Gmail permissions.",
+    );
+    return;
+  }
+  const { error } = await supabase.from("integrations").upsert(
+    {
+      user_id: s.user.id,
+      provider: "gmail",
+      access_token: s.provider_token,
+      refresh_token: s.provider_refresh_token ?? null,
+      scope: "gmail.readonly",
+    },
+    { onConflict: "user_id,provider" },
+  );
+  if (error) {
+    alert("Failed to connect Gmail: " + error.message);
+    return;
+  }
+  await fetchIntegrations();
+  renderIntegrationsModal();
+}
+
+async function disconnectGmail() {
+  if (isMock()) return;
+  await supabase
+    .from("integrations")
+    .delete()
+    .eq("provider", "gmail");
+  gmailIntegration = null;
+  renderIntegrationsModal();
+}
+
+async function saveSlackIntegration(e) {
+  e.preventDefault();
+  if (isMock()) return;
+  const teamId = els.slackTeamInput.value.trim();
+  const slackUserId = els.slackUserInput.value.trim();
+  const botToken = els.slackTokenInput.value.trim();
+  if (!teamId || !slackUserId || !botToken) {
+    alert("Please fill in all Slack fields.");
+    return;
+  }
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData?.session?.user?.id;
+  if (!userId) return;
+
+  const { error } = await supabase.from("integrations").upsert(
+    {
+      user_id: userId,
+      provider: "slack",
+      access_token: botToken,
+      metadata: { team_id: teamId, slack_user_id: slackUserId },
+    },
+    { onConflict: "user_id,provider" },
+  );
+  if (error) {
+    alert("Failed to save Slack integration: " + error.message);
+    return;
+  }
+  await fetchIntegrations();
+  renderIntegrationsModal();
+}
+
+async function disconnectSlack() {
+  if (isMock()) return;
+  await supabase
+    .from("integrations")
+    .delete()
+    .eq("provider", "slack");
+  slackIntegration = null;
+  renderIntegrationsModal();
+}
+
+function openIntegrations() {
+  renderIntegrationsModal();
+  els.intModal.hidden = false;
+}
+
+function closeIntegrations() {
+  els.intModal.hidden = true;
+}
+
+function renderIntegrationsModal() {
+  // Gmail
+  if (gmailIntegration) {
+    els.gmailStatus.textContent = "Connected";
+    els.gmailStatus.className = "integration-status connected";
+    els.gmailConnect.hidden = true;
+    els.gmailDisconnect.hidden = false;
+  } else {
+    els.gmailStatus.textContent = "Not connected";
+    els.gmailStatus.className = "integration-status";
+    els.gmailConnect.hidden = false;
+    els.gmailDisconnect.hidden = true;
+  }
+
+  // Slack
+  if (slackIntegration) {
+    els.slackStatus.textContent =
+      `Connected (team: ${slackIntegration.metadata?.team_id ?? "?"})`;
+    els.slackStatus.className = "integration-status connected";
+    els.slackForm.hidden = true;
+    els.slackDisconnect.hidden = false;
+  } else {
+    els.slackStatus.textContent = "Not connected";
+    els.slackStatus.className = "integration-status";
+    els.slackForm.hidden = false;
+    els.slackDisconnect.hidden = true;
+  }
 }
 
 // ---------- Render ----------
@@ -916,6 +1071,15 @@ els.tagsModal.querySelectorAll("[data-close]").forEach((el) =>
   el.addEventListener("click", closeTagManager),
 );
 
+els.integrationsBtn.addEventListener("click", openIntegrations);
+els.gmailConnect.addEventListener("click", connectGmail);
+els.gmailDisconnect.addEventListener("click", disconnectGmail);
+els.slackForm.addEventListener("submit", saveSlackIntegration);
+els.slackDisconnect.addEventListener("click", disconnectSlack);
+els.intModal.querySelectorAll("[data-close]").forEach((el) =>
+  el.addEventListener("click", closeIntegrations),
+);
+
 function isTextInput(el) {
   if (!el) return false;
   const tag = el.tagName;
@@ -936,6 +1100,10 @@ function findTaskById(id) {
 document.addEventListener("keydown", (e) => {
   // Escape: close whichever modal is open.
   if (e.key === "Escape") {
+    if (!els.intModal.hidden) {
+      closeIntegrations();
+      return;
+    }
     if (!els.tagsModal.hidden) {
       closeTagManager();
       return;
@@ -957,7 +1125,7 @@ document.addEventListener("keydown", (e) => {
 
   // The remaining shortcuts only apply when no modal is open and the user
   // isn't typing into a text field.
-  const modalOpen = !els.editModal.hidden || !els.tagsModal.hidden;
+  const modalOpen = !els.editModal.hidden || !els.tagsModal.hidden || !els.intModal.hidden;
   if (modalOpen) return;
   if (isTextInput(document.activeElement)) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;

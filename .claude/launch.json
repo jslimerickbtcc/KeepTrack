@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "keeptrack",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "5173"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-l", "5173", "-s", "."],
       "port": 5173
     }
   ]

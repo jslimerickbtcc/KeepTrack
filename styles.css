@@ -715,3 +715,70 @@ body {
 .modal-footer .spacer {
   flex: 1;
 }
+
+/* ---------- integrations modal ---------- */
+
+.integration-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.integration-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.integration-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.integration-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.integration-desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.integration-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.integration-status.connected {
+  color: #22c55e;
+}
+
+.slack-connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slack-connect-form input[type="text"] {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.slack-connect-form input[type="text"]:focus {
+  border-color: var(--accent);
+}

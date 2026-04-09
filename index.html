@@ -60,6 +60,7 @@
             <option value="created_at">Sort: Created</option>
           </select>
           <button id="manage-tags-btn" class="btn" type="button">Manage tags</button>
+          <button id="integrations-btn" class="btn" type="button">Integrations</button>
         </div>
 
         <ul id="task-list" class="task-list"></ul>
@@ -158,8 +159,59 @@
       </div>
     </div>
 
+    <!-- Integrations modal -->
+    <div id="integrations-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="integrations-title">
+        <header class="modal-header">
+          <h2 id="integrations-title">Integrations</h2>
+          <button class="btn link" data-close aria-label="Close">×</button>
+        </header>
+
+        <div class="edit-form">
+          <!-- Gmail -->
+          <div class="integration-card">
+            <div class="integration-header">
+              <div class="integration-icon">✉️</div>
+              <div>
+                <h3>Gmail</h3>
+                <p class="integration-desc">Auto-import messages labeled <strong>todo</strong> as tasks.</p>
+              </div>
+            </div>
+            <span id="gmail-status" class="integration-status">Not connected</span>
+            <button id="gmail-connect" class="btn primary" type="button">Connect Gmail</button>
+            <button id="gmail-disconnect" class="btn link danger" type="button" hidden>Disconnect</button>
+          </div>
+
+          <!-- Slack -->
+          <div class="integration-card">
+            <div class="integration-header">
+              <div class="integration-icon">💬</div>
+              <div>
+                <h3>Slack</h3>
+                <p class="integration-desc">React with <strong>:todo:</strong> to create a task from any message.</p>
+              </div>
+            </div>
+            <span id="slack-status" class="integration-status">Not connected</span>
+            <form id="slack-form" class="slack-connect-form">
+              <input id="slack-team-input" type="text" placeholder="Workspace ID (e.g. T01ABC23D)" autocomplete="off" required />
+              <input id="slack-user-input" type="text" placeholder="Your Slack user ID (e.g. U01ABC23D)" autocomplete="off" required />
+              <input id="slack-token-input" type="text" placeholder="Bot token (xoxb-...)" autocomplete="off" required />
+              <button id="slack-save-btn" type="submit" class="btn primary">Connect Slack</button>
+            </form>
+            <button id="slack-disconnect" class="btn link danger" type="button" hidden>Disconnect</button>
+          </div>
+
+          <footer class="modal-footer">
+            <div class="spacer"></div>
+            <button type="button" class="btn" data-close>Done</button>
+          </footer>
+        </div>
+      </div>
+    </div>
+
     <footer class="footer">
-      <small>KeepTrack — v0.3</small>
+      <small>KeepTrack — v0.4</small>
     </footer>
 
     <script type="module" src="./app.js"></script>

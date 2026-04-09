@@ -1,0 +1,41 @@
+# Slack App Manifest for KeepTrack
+# Use this in https://api.slack.com/apps → "Create New App" → "From a manifest"
+#
+# After creating the app:
+#   1. Copy the Signing Secret to secrets/slack.env
+#   2. Install the app to your workspace
+#   3. Copy the Bot User OAuth Token to secrets/slack.env
+#   4. In KeepTrack, click "Connect Slack" and enter your Slack user ID
+
+display_information:
+  name: KeepTrack
+  description: React with :todo: to create tasks in KeepTrack
+  background_color: "#111827"
+  long_description: |
+    KeepTrack is a lightweight personal task manager. Install this Slack app
+    and react to any message with the :todo: emoji to automatically create
+    a task in KeepTrack with a link back to the original Slack message.
+
+features:
+  bot_user:
+    display_name: KeepTrack
+    always_online: true
+
+oauth_config:
+  scopes:
+    bot:
+      - channels:history      # Read messages to extract task title
+      - groups:history         # Same for private channels
+      - reactions:read         # Detect :todo: reactions
+      - chat:write             # Optional: confirm task creation
+      - links:read             # Get message permalinks
+
+settings:
+  event_subscriptions:
+    # Replace with your Supabase Edge Function URL:
+    request_url: https://YOUR-PROJECT.supabase.co/functions/v1/slack-events
+    bot_events:
+      - reaction_added
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
