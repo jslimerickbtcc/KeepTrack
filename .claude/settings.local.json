@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter --version)",
+      "Bash(xcode-select -p)",
+      "Bash(brew install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(python3 -m http.server 5173)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(lsof -iTCP:5173 -sTCP:LISTEN)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

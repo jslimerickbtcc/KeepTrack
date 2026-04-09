@@ -1,0 +1,272 @@
+{
+  "vBRIEFInfo": { "version": "0.5" },
+  "plan": {
+    "title": "KeepTrack SPECIFICATION",
+    "status": "approved",
+    "narratives": {
+      "Overview": "KeepTrack is a lightweight cross-platform personal task manager built with Flutter and Supabase. It lets a single user capture, categorize, and track to-dos with tags and due dates, and auto-imports tasks from Gmail (labeled messages) and Slack (emoji reaction). v1 ships for macOS and iOS with Google OAuth and online-only sync. A later phase introduces multi-user personal accounts with optional shared lists.",
+      "Architecture": "Flutter app (single codebase, macOS + iOS targets) talking directly to Supabase for auth (Google OAuth), Postgres storage, and Row Level Security. Two Supabase Edge Functions handle integrations: a Gmail poller (cron) that pulls messages with the 'todo' label via the Gmail API, and a Slack events handler that receives reaction_added events and creates tasks when the trigger emoji is used. All data is keyed by user_id with RLS enforcing per-user isolation. Online-only in v1 — no local cache layer."
+    },
+    "items": [
+      {
+        "id": "phase-1",
+        "title": "Phase 1: Foundation",
+        "status": "pending",
+        "subItems": [
+          {
+            "id": "1.1",
+            "title": "Project scaffold",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "1.1.1",
+                "title": "Initialize Flutter project with macOS + iOS targets",
+                "status": "pending",
+                "narrative": { "Acceptance": "flutter run succeeds on macOS and iOS simulator", "Traces": "NFR-1" }
+              },
+              {
+                "id": "1.1.2",
+                "title": "Add supabase_flutter, google_sign_in, riverpod, go_router dependencies",
+                "status": "pending",
+                "narrative": { "Acceptance": "pubspec.yaml pinned; flutter pub get clean", "Traces": "FR-1" }
+              },
+              {
+                "id": "1.1.3",
+                "title": "Set up Taskfile with check/test/build/clean targets",
+                "status": "pending",
+                "narrative": { "Acceptance": "task check runs analyze + format + test", "Traces": "NFR-4" }
+              }
+            ]
+          },
+          {
+            "id": "1.2",
+            "title": "Supabase project + schema",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "1.2.1",
+                "title": "Create Supabase project and store keys in secrets/",
+                "status": "pending",
+                "narrative": { "Acceptance": "secrets/supabase.env with .example template committed", "Traces": "NFR-3" }
+              },
+              {
+                "id": "1.2.2",
+                "title": "Migration: tasks, tags, task_tags tables with RLS policies",
+                "status": "pending",
+                "narrative": { "Acceptance": "Migrations applied; authenticated user can only see own rows", "Traces": "FR-2, NFR-3" }
+              }
+            ]
+          },
+          {
+            "id": "1.3",
+            "title": "Google OAuth authentication",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "1.3.1",
+                "title": "Configure Google OAuth provider in Supabase",
+                "status": "pending",
+                "narrative": { "Acceptance": "Supabase dashboard shows Google provider enabled", "Traces": "FR-1" }
+              },
+              {
+                "id": "1.3.2",
+                "title": "Implement sign-in flow in Flutter app (macOS + iOS)",
+                "status": "pending",
+                "narrative": { "Acceptance": "Tapping 'Sign in with Google' returns a valid Supabase session on both platforms", "Traces": "FR-1" }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "phase-2",
+        "title": "Phase 2: Core Tasks",
+        "status": "pending",
+        "subItems": [
+          {
+            "id": "2.1",
+            "title": "Task CRUD",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "2.1.1",
+                "title": "Data model: Task (id, title, notes, due_at, priority, completed_at, source_url, created_at)",
+                "status": "pending",
+                "narrative": { "Acceptance": "Dart model + Supabase table match; round-trip insert/select test passes", "Traces": "FR-2" }
+              },
+              {
+                "id": "2.1.2",
+                "title": "Create/edit/delete task screens",
+                "status": "pending",
+                "narrative": { "Acceptance": "User can create, edit, and delete a task end-to-end", "Traces": "FR-2" }
+              },
+              {
+                "id": "2.1.3",
+                "title": "Mark task complete / incomplete (writes completed_at)",
+                "status": "pending",
+                "narrative": { "Acceptance": "Completion toggles persist after app restart", "Traces": "FR-2" }
+              }
+            ]
+          },
+          {
+            "id": "2.2",
+            "title": "Tags (many per task)",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "2.2.1",
+                "title": "Tag CRUD + task_tag join",
+                "status": "pending",
+                "narrative": { "Acceptance": "Adding/removing tags on a task persists; tags reusable across tasks", "Traces": "FR-3" }
+              },
+              {
+                "id": "2.2.2",
+                "title": "Tag picker UI on task editor",
+                "status": "pending",
+                "narrative": { "Acceptance": "User can create a new tag inline and attach multiple tags", "Traces": "FR-3" }
+              }
+            ]
+          },
+          {
+            "id": "2.3",
+            "title": "List, filter, sort",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "2.3.1",
+                "title": "Main task list with overdue highlight",
+                "status": "pending",
+                "narrative": { "Acceptance": "Tasks with due_at in the past render visually distinct", "Traces": "FR-4" }
+              },
+              {
+                "id": "2.3.2",
+                "title": "Filter by tag, priority, completion state",
+                "status": "pending",
+                "narrative": { "Acceptance": "Selecting a tag filter narrows the list; clearing restores all", "Traces": "FR-4" }
+              },
+              {
+                "id": "2.3.3",
+                "title": "Sort by due date / priority / created",
+                "status": "pending",
+                "narrative": { "Acceptance": "Sort selection persists within session", "Traces": "FR-4" }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "phase-3",
+        "title": "Phase 3: Integrations",
+        "status": "pending",
+        "subItems": [
+          {
+            "id": "3.1",
+            "title": "Gmail label import",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "3.1.1",
+                "title": "Request Gmail read scope during Google OAuth",
+                "status": "pending",
+                "narrative": { "Acceptance": "Token with gmail.readonly scope stored in Supabase auth user metadata", "Traces": "FR-5" }
+              },
+              {
+                "id": "3.1.2",
+                "title": "Supabase Edge Function: poll Gmail for label 'todo' on a schedule",
+                "status": "pending",
+                "narrative": { "Acceptance": "Function runs every 5 min and creates a task for each new labeled message with source_url set", "Traces": "FR-5, NFR-2" }
+              },
+              {
+                "id": "3.1.3",
+                "title": "Dedupe via Gmail message id stored on task",
+                "status": "pending",
+                "narrative": { "Acceptance": "Running poller twice never creates duplicate tasks", "Traces": "FR-5" }
+              }
+            ]
+          },
+          {
+            "id": "3.2",
+            "title": "Slack emoji trigger",
+            "status": "pending",
+            "subItems": [
+              {
+                "id": "3.2.1",
+                "title": "Create Slack app with reaction_added event subscription",
+                "status": "pending",
+                "narrative": { "Acceptance": "Slack manifest committed; app installable to a workspace", "Traces": "FR-6" }
+              },
+              {
+                "id": "3.2.2",
+                "title": "Supabase Edge Function: receive Slack events, create task on trigger emoji",
+                "status": "pending",
+                "narrative": { "Acceptance": "Reacting with :todo: on a Slack message creates a task with the message text as title and permalink as source_url", "Traces": "FR-6" }
+              },
+              {
+                "id": "3.2.3",
+                "title": "Link Slack workspace to KeepTrack user (OAuth install flow)",
+                "status": "pending",
+                "narrative": { "Acceptance": "User installs Slack app from in-app button; workspace id mapped to user_id", "Traces": "FR-6" }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "phase-4",
+        "title": "Phase 4: Polish & Ship v1",
+        "status": "pending",
+        "subItems": [
+          {
+            "id": "4.1",
+            "title": "Onboarding flow (sign in \u2192 connect Gmail \u2192 connect Slack \u2192 done)",
+            "status": "pending",
+            "narrative": { "Acceptance": "First-run walkthrough reachable on both macOS and iOS", "Traces": "FR-7" }
+          },
+          {
+            "id": "4.2",
+            "title": "macOS release build + notarization",
+            "status": "pending",
+            "narrative": { "Acceptance": "Signed .app distributable produced by task build", "Traces": "NFR-1" }
+          },
+          {
+            "id": "4.3",
+            "title": "iOS TestFlight build",
+            "status": "pending",
+            "narrative": { "Acceptance": "Build uploads to TestFlight and installs on a device", "Traces": "NFR-1" }
+          },
+          {
+            "id": "4.4",
+            "title": "Coverage \u2265 85% across task, tags, integration modules",
+            "status": "pending",
+            "narrative": { "Acceptance": "task test:coverage reports \u2265 85%", "Traces": "NFR-4" }
+          }
+        ]
+      },
+      {
+        "id": "phase-5",
+        "title": "Phase 5: Multi-user (later)",
+        "status": "pending",
+        "subItems": [
+          {
+            "id": "5.1",
+            "title": "Shared lists: lists table with owner_id + members join",
+            "status": "pending",
+            "narrative": { "Acceptance": "Tasks can optionally belong to a list; RLS allows owner + members", "Traces": "FR-8" }
+          },
+          {
+            "id": "5.2",
+            "title": "Invite flow for shared lists",
+            "status": "pending",
+            "narrative": { "Acceptance": "Owner can invite by email; invitee joins the list on next sign-in", "Traces": "FR-8" }
+          },
+          {
+            "id": "5.3",
+            "title": "Per-list activity visibility",
+            "status": "pending",
+            "narrative": { "Acceptance": "Members see each other's task edits on a shared list", "Traces": "FR-8" }
+          }
+        ]
+      }
+    ]
+  }
+}

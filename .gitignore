@@ -1,0 +1,13 @@
+# Local Supabase config — never commit real keys
+config.js
+
+# Secrets
+secrets/*
+!secrets/.gitkeep
+!secrets/*.example
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111827" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KeepTrack" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/icon-180.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>KeepTrack</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>KeepTrack</h1>
+      <div id="auth-area" class="auth-area"></div>
+    </header>
+
+    <main id="app">
+      <section id="signed-out" hidden>
+        <div class="empty">
+          <p>Sign in to start tracking.</p>
+          <button id="sign-in-btn" class="btn primary">Sign in with Google</button>
+        </div>
+      </section>
+
+      <section id="signed-in" hidden>
+        <form id="new-task-form" class="new-task">
+          <input
+            id="new-task-title"
+            type="text"
+            placeholder="What do you need to do?"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" class="btn primary">Add</button>
+        </form>
+
+        <div class="toolbar">
+          <select id="filter-state" aria-label="State">
+            <option value="open">Open</option>
+            <option value="all">All</option>
+            <option value="done">Done</option>
+          </select>
+          <select id="filter-priority" aria-label="Priority">
+            <option value="all">Any priority</option>
+            <option value="high">High</option>
+            <option value="med">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <select id="filter-tag" aria-label="Tag">
+            <option value="all">All tags</option>
+          </select>
+          <select id="sort-by" aria-label="Sort">
+            <option value="due_at">Sort: Due date</option>
+            <option value="priority">Sort: Priority</option>
+            <option value="created_at">Sort: Created</option>
+          </select>
+          <button id="manage-tags-btn" class="btn" type="button">Manage tags</button>
+        </div>
+
+        <ul id="task-list" class="task-list"></ul>
+        <p id="empty-hint" class="empty" hidden>No tasks match. Add one above.</p>
+      </section>
+
+      <section id="loading" class="empty">
+        <p>Loading…</p>
+      </section>
+    </main>
+
+    <!-- Edit modal -->
+    <div id="edit-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="edit-title">
+        <header class="modal-header">
+          <h2 id="edit-title">Edit task</h2>
+          <button class="btn link" data-close aria-label="Close">×</button>
+        </header>
+
+        <form id="edit-form" class="edit-form">
+          <div class="field">
+            <label for="edit-field-title">Title</label>
+            <input id="edit-field-title" type="text" required />
+          </div>
+
+          <div class="field">
+            <label for="edit-field-notes">Notes</label>
+            <textarea id="edit-field-notes" rows="3" placeholder="Optional details"></textarea>
+          </div>
+
+          <div class="row">
+            <div class="field">
+              <label for="edit-field-due">Due date</label>
+              <input id="edit-field-due" type="date" />
+            </div>
+            <div class="field">
+              <label for="edit-field-priority">Priority</label>
+              <select id="edit-field-priority">
+                <option value="low">Low</option>
+                <option value="med">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Tags</label>
+            <div id="edit-field-tags" class="tag-toggle-grid"></div>
+            <small class="hint">
+              No tags yet?
+              <button type="button" class="inline-link" id="open-tag-mgr-from-edit">Manage tags</button>
+            </small>
+          </div>
+
+          <footer class="modal-footer">
+            <button type="button" class="btn link danger" id="edit-delete">Delete</button>
+            <div class="spacer"></div>
+            <button type="button" class="btn" data-close>Cancel</button>
+            <button type="submit" class="btn primary">Save</button>
+          </footer>
+        </form>
+      </div>
+    </div>
+
+    <!-- Tag Manager modal -->
+    <div id="tags-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="tags-title">
+        <header class="modal-header">
+          <h2 id="tags-title">Manage tags</h2>
+          <button class="btn link" data-close aria-label="Close">×</button>
+        </header>
+
+        <div class="edit-form">
+          <form id="new-tag-form" class="new-tag-form">
+            <input
+              id="new-tag-name"
+              type="text"
+              placeholder="New tag name"
+              autocomplete="off"
+              required
+            />
+            <div id="new-tag-color" class="color-swatches"></div>
+            <button type="submit" class="btn primary">Add</button>
+          </form>
+
+          <ul id="tag-mgr-list" class="tag-mgr-list"></ul>
+          <p id="tag-mgr-empty" class="empty" hidden>No tags yet — add one above.</p>
+
+          <footer class="modal-footer">
+            <div class="spacer"></div>
+            <button type="button" class="btn" data-close>Done</button>
+          </footer>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <small>KeepTrack — v0.3</small>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
