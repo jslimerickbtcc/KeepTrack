@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>KeepTrack — Gmail Connected</title>
+</head>
+<body style="font-family:system-ui;text-align:center;padding:40px;background:#0b1220;color:#e5e7eb">
+  <h2 id="heading">Gmail connected</h2>
+  <p id="msg">This window will close automatically.</p>
+  <script>
+    var params = new URLSearchParams(window.location.search);
+    var error = params.get("error");
+    if (error) {
+      document.getElementById("heading").textContent = "Connection failed";
+      document.getElementById("msg").textContent = error;
+      if (window.opener) {
+        window.opener.postMessage({ type: "gmail-connected", ok: false, error: error }, "*");
+      }
+    } else {
+      if (window.opener) {
+        window.opener.postMessage({ type: "gmail-connected", ok: true }, "*");
+      }
+    }
+    setTimeout(function() { window.close(); }, 2000);
+  </script>
+</body>
+</html>

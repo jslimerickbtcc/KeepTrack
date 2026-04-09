@@ -21,45 +21,23 @@ const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/gmail-auth-callback`;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-function htmlResponse(body: string, status = 200): Response {
-  return new Response(body, {
-    status,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+// The frontend site URL — the callback redirects here after success/failure.
+const SITE_URL = "https://jslimerickbtcc.github.io/KeepTrack";
+
+function successRedirect(): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { Location: `${SITE_URL}/gmail-connected.html` },
   });
 }
 
-function successPage(label: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head><title>KeepTrack — Gmail Connected</title></head>
-<body style="font-family:system-ui;text-align:center;padding:40px;background:#0b1220;color:#e5e7eb">
-  <h2>✅ Gmail connected</h2>
-  <p>"${label}" account linked. This window will close automatically.</p>
-  <script>
-    if (window.opener) {
-      window.opener.postMessage({ type: "gmail-connected", ok: true }, "*");
-    }
-    setTimeout(() => window.close(), 1500);
-  </script>
-</body>
-</html>`;
-}
-
-function errorPage(message: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head><title>KeepTrack — Error</title></head>
-<body style="font-family:system-ui;text-align:center;padding:40px;background:#0b1220;color:#e5e7eb">
-  <h2>❌ Connection failed</h2>
-  <p>${message}</p>
-  <script>
-    if (window.opener) {
-      window.opener.postMessage({ type: "gmail-connected", ok: false, error: "${message}" }, "*");
-    }
-    setTimeout(() => window.close(), 3000);
-  </script>
-</body>
-</html>`;
+function errorRedirect(message: string): Response {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: `${SITE_URL}/gmail-connected.html?error=${encodeURIComponent(message)}`,
+    },
+  });
 }
 
 serve(async (req: Request) => {
@@ -70,22 +48,22 @@ serve(async (req: Request) => {
   const error = url.searchParams.get("error");
 
   if (error) {
-    return htmlResponse(errorPage(`Google returned an error: ${error}`));
+    return errorRedirect(`Google returned an error: ${error}`);
   }
 
   if (!code || !stateRaw) {
-    return htmlResponse(errorPage("Missing authorization code or state."), 400);
+    return errorRedirect("Missing authorization code or state.");
   }
 
   let state: { user_id: string; label: string };
   try {
     state = JSON.parse(atob(stateRaw));
   } catch {
-    return htmlResponse(errorPage("Invalid state parameter."), 400);
+    return errorRedirect("Invalid state parameter.");
   }
 
   if (!state.user_id) {
-    return htmlResponse(errorPage("Missing user_id in state."), 400);
+    return errorRedirect("Missing user_id in state.");
   }
 
   try {
@@ -105,7 +83,7 @@ serve(async (req: Request) => {
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
       console.error("Token exchange failed:", errText);
-      return htmlResponse(errorPage("Token exchange failed. Please try again."));
+      return errorRedirect("Token exchange failed. Please try again.");
     }
 
     const tokens = await tokenRes.json();
@@ -140,17 +118,15 @@ serve(async (req: Request) => {
 
     if (insertErr) {
       if (insertErr.code === "23505") {
-        return htmlResponse(
-          errorPage(`A Gmail connection labeled "${label}" already exists.`),
-        );
+        return errorRedirect(`A Gmail connection labeled "${label}" already exists.`);
       }
       console.error("Insert failed:", insertErr);
-      return htmlResponse(errorPage("Database error. Please try again."));
+      return errorRedirect("Database error. Please try again.");
     }
 
-    return htmlResponse(successPage(label));
+    return successRedirect();
   } catch (err) {
     console.error("gmail-auth-callback error:", err);
-    return htmlResponse(errorPage("Unexpected error. Please try again."));
+    return errorRedirect("Unexpected error. Please try again.");
   }
 });
