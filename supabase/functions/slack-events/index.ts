@@ -143,10 +143,10 @@ serve(async (req: Request) => {
 
   try {
     // Look up the KeepTrack user via the integrations table.
-    // The Slack integration stores team_id and slack_user_id in metadata.
+    // A user may have multiple Slack integrations (different workspaces).
     const { data: integrations } = await admin
       .from("integrations")
-      .select("user_id, access_token, metadata")
+      .select("id, user_id, access_token, label, metadata")
       .eq("provider", "slack");
 
     // Find the integration whose metadata matches this Slack workspace + user.

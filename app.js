@@ -66,15 +66,10 @@ const els = {
   integrationsBtn: $("integrations-btn"),
   // Integrations modal
   intModal: $("integrations-modal"),
-  gmailStatus: $("gmail-status"),
   gmailConnect: $("gmail-connect"),
-  gmailDisconnect: $("gmail-disconnect"),
-  slackStatus: $("slack-status"),
-  slackDisconnect: $("slack-disconnect"),
   slackTeamInput: $("slack-team-input"),
   slackUserInput: $("slack-user-input"),
   slackTokenInput: $("slack-token-input"),
-  slackSaveBtn: $("slack-save-btn"),
   slackForm: $("slack-form"),
   // Edit modal
   editModal: $("edit-modal"),
@@ -108,8 +103,8 @@ let filterState = "open";
 let filterPriority = "all";
 let filterTag = "all";
 let sortBy = "due_at";
-let gmailIntegration = null; // { user_id, provider, access_token, ... } or null
-let slackIntegration = null;
+let gmailIntegrations = []; // Array of { id, user_id, provider, label, ... }
+let slackIntegrations = [];
 
 // ---------- Mock store ----------
 const mock = {
@@ -185,8 +180,8 @@ async function fetchAll() {
   if (isMock()) {
     indexTags(mock.tags);
     tasks = mock.tasks.map((t) => ({ ...t, tag_ids: [...(t.tag_ids ?? [])] }));
-    gmailIntegration = null;
-    slackIntegration = null;
+    gmailIntegrations = [];
+    slackIntegrations = [];
     return;
   }
 
@@ -330,21 +325,20 @@ async function deleteTag(id) {
 // ---------- Integrations ----------
 async function fetchIntegrations() {
   if (isMock()) {
-    gmailIntegration = null;
-    slackIntegration = null;
+    gmailIntegrations = [];
+    slackIntegrations = [];
     return;
   }
   const { data } = await supabase
     .from("integrations")
-    .select("user_id, provider, access_token, refresh_token, scope, metadata, installed_at");
-  gmailIntegration = data?.find((i) => i.provider === "gmail") ?? null;
-  slackIntegration = data?.find((i) => i.provider === "slack") ?? null;
+    .select("id, user_id, provider, access_token, refresh_token, scope, label, metadata, installed_at")
+    .order("installed_at", { ascending: true });
+  gmailIntegrations = (data ?? []).filter((i) => i.provider === "gmail");
+  slackIntegrations = (data ?? []).filter((i) => i.provider === "slack");
 }
 
 async function connectGmail() {
   if (isMock()) return;
-  // The provider_token and provider_refresh_token come from the Google OAuth
-  // session — Supabase makes them available after sign-in with scopes.
   const { data: sessionData } = await supabase.auth.getSession();
   const s = sessionData?.session;
   if (!s?.provider_token) {
@@ -353,31 +347,38 @@ async function connectGmail() {
     );
     return;
   }
-  const { error } = await supabase.from("integrations").upsert(
-    {
-      user_id: s.user.id,
-      provider: "gmail",
-      access_token: s.provider_token,
-      refresh_token: s.provider_refresh_token ?? null,
-      scope: "gmail.readonly",
-    },
-    { onConflict: "user_id,provider" },
-  );
+  // Prompt for a label if they already have one connected.
+  let label = "Default";
+  if (gmailIntegrations.length > 0) {
+    const input = prompt("Label for this Gmail account (e.g. Work, Personal):");
+    if (!input) return; // Cancelled.
+    label = input.trim() || "Default";
+  }
+  const { error } = await supabase.from("integrations").insert({
+    user_id: s.user.id,
+    provider: "gmail",
+    access_token: s.provider_token,
+    refresh_token: s.provider_refresh_token ?? null,
+    scope: "gmail.readonly",
+    label,
+  });
   if (error) {
-    alert("Failed to connect Gmail: " + error.message);
+    if (error.code === "23505") {
+      alert(`A Gmail connection labeled "${label}" already exists. Use a different label.`);
+    } else {
+      alert("Failed to connect Gmail: " + error.message);
+    }
     return;
   }
   await fetchIntegrations();
   renderIntegrationsModal();
 }
 
-async function disconnectGmail() {
+async function disconnectIntegration(id) {
   if (isMock()) return;
-  await supabase
-    .from("integrations")
-    .delete()
-    .eq("provider", "gmail");
-  gmailIntegration = null;
+  if (!confirm("Disconnect this integration?")) return;
+  await supabase.from("integrations").delete().eq("id", id);
+  await fetchIntegrations();
   renderIntegrationsModal();
 }
 
@@ -395,30 +396,33 @@ async function saveSlackIntegration(e) {
   const userId = sessionData?.session?.user?.id;
   if (!userId) return;
 
-  const { error } = await supabase.from("integrations").upsert(
-    {
-      user_id: userId,
-      provider: "slack",
-      access_token: botToken,
-      metadata: { team_id: teamId, slack_user_id: slackUserId },
-    },
-    { onConflict: "user_id,provider" },
-  );
+  // Prompt for a label if they already have one connected.
+  let label = "Default";
+  if (slackIntegrations.length > 0) {
+    const input = prompt("Label for this Slack workspace (e.g. Work, Community):");
+    if (!input) return;
+    label = input.trim() || "Default";
+  }
+
+  const { error } = await supabase.from("integrations").insert({
+    user_id: userId,
+    provider: "slack",
+    access_token: botToken,
+    label,
+    metadata: { team_id: teamId, slack_user_id: slackUserId },
+  });
   if (error) {
-    alert("Failed to save Slack integration: " + error.message);
+    if (error.code === "23505") {
+      alert(`A Slack connection labeled "${label}" already exists. Use a different label.`);
+    } else {
+      alert("Failed to save Slack integration: " + error.message);
+    }
     return;
   }
+  els.slackTeamInput.value = "";
+  els.slackUserInput.value = "";
+  els.slackTokenInput.value = "";
   await fetchIntegrations();
-  renderIntegrationsModal();
-}
-
-async function disconnectSlack() {
-  if (isMock()) return;
-  await supabase
-    .from("integrations")
-    .delete()
-    .eq("provider", "slack");
-  slackIntegration = null;
   renderIntegrationsModal();
 }
 
@@ -431,33 +435,48 @@ function closeIntegrations() {
   els.intModal.hidden = true;
 }
 
-function renderIntegrationsModal() {
-  // Gmail
-  if (gmailIntegration) {
-    els.gmailStatus.textContent = "Connected";
-    els.gmailStatus.className = "integration-status connected";
-    els.gmailConnect.hidden = true;
-    els.gmailDisconnect.hidden = false;
-  } else {
-    els.gmailStatus.textContent = "Not connected";
-    els.gmailStatus.className = "integration-status";
-    els.gmailConnect.hidden = false;
-    els.gmailDisconnect.hidden = true;
+function renderIntegrationList(container, items, provider) {
+  container.innerHTML = "";
+  if (items.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "integration-status";
+    empty.textContent = "No accounts connected";
+    container.append(empty);
+    return;
   }
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = "integration-row";
 
-  // Slack
-  if (slackIntegration) {
-    els.slackStatus.textContent =
-      `Connected (team: ${slackIntegration.metadata?.team_id ?? "?"})`;
-    els.slackStatus.className = "integration-status connected";
-    els.slackForm.hidden = true;
-    els.slackDisconnect.hidden = false;
-  } else {
-    els.slackStatus.textContent = "Not connected";
-    els.slackStatus.className = "integration-status";
-    els.slackForm.hidden = false;
-    els.slackDisconnect.hidden = true;
+    const info = document.createElement("span");
+    info.className = "integration-row-label";
+    if (provider === "gmail") {
+      info.textContent = item.label || "Gmail";
+    } else {
+      const team = item.metadata?.team_id ?? "?";
+      info.textContent = `${item.label || "Slack"} (team: ${team})`;
+    }
+    row.append(info);
+
+    const status = document.createElement("span");
+    status.className = "integration-status connected";
+    status.textContent = "Connected";
+    row.append(status);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn link danger";
+    remove.textContent = "Disconnect";
+    remove.addEventListener("click", () => disconnectIntegration(item.id));
+    row.append(remove);
+
+    container.append(row);
   }
+}
+
+function renderIntegrationsModal() {
+  renderIntegrationList($("gmail-list"), gmailIntegrations, "gmail");
+  renderIntegrationList($("slack-list"), slackIntegrations, "slack");
 }
 
 // ---------- Render ----------
@@ -1073,9 +1092,7 @@ els.tagsModal.querySelectorAll("[data-close]").forEach((el) =>
 
 els.integrationsBtn.addEventListener("click", openIntegrations);
 els.gmailConnect.addEventListener("click", connectGmail);
-els.gmailDisconnect.addEventListener("click", disconnectGmail);
 els.slackForm.addEventListener("submit", saveSlackIntegration);
-els.slackDisconnect.addEventListener("click", disconnectSlack);
 els.intModal.querySelectorAll("[data-close]").forEach((el) =>
   el.addEventListener("click", closeIntegrations),
 );

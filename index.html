@@ -175,12 +175,11 @@
               <div class="integration-icon">✉️</div>
               <div>
                 <h3>Gmail</h3>
-                <p class="integration-desc">Auto-import messages labeled <strong>todo</strong> as tasks.</p>
+                <p class="integration-desc">Auto-import messages labeled <strong>todo</strong> as tasks. Connect multiple accounts.</p>
               </div>
             </div>
-            <span id="gmail-status" class="integration-status">Not connected</span>
-            <button id="gmail-connect" class="btn primary" type="button">Connect Gmail</button>
-            <button id="gmail-disconnect" class="btn link danger" type="button" hidden>Disconnect</button>
+            <div id="gmail-list" class="integration-list"></div>
+            <button id="gmail-connect" class="btn primary" type="button">Add Gmail account</button>
           </div>
 
           <!-- Slack -->
@@ -189,17 +188,16 @@
               <div class="integration-icon">💬</div>
               <div>
                 <h3>Slack</h3>
-                <p class="integration-desc">React with <strong>:todo:</strong> to create a task from any message.</p>
+                <p class="integration-desc">React with <strong>:todo:</strong> to create a task. Connect multiple workspaces.</p>
               </div>
             </div>
-            <span id="slack-status" class="integration-status">Not connected</span>
+            <div id="slack-list" class="integration-list"></div>
             <form id="slack-form" class="slack-connect-form">
               <input id="slack-team-input" type="text" placeholder="Workspace ID (e.g. T01ABC23D)" autocomplete="off" required />
               <input id="slack-user-input" type="text" placeholder="Your Slack user ID (e.g. U01ABC23D)" autocomplete="off" required />
               <input id="slack-token-input" type="text" placeholder="Bot token (xoxb-...)" autocomplete="off" required />
-              <button id="slack-save-btn" type="submit" class="btn primary">Connect Slack</button>
+              <button type="submit" class="btn primary">Add Slack workspace</button>
             </form>
-            <button id="slack-disconnect" class="btn link danger" type="button" hidden>Disconnect</button>
           </div>
 
           <footer class="modal-footer">

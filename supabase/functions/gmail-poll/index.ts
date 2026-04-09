@@ -21,9 +21,11 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 // ---------- Google OAuth helpers ----------
 
 interface TokenRow {
+  id: string;
   user_id: string;
   access_token: string;
   refresh_token: string;
+  label: string;
   metadata: Record<string, unknown>;
 }
 
@@ -107,10 +109,10 @@ async function getMessage(
 
 serve(async (_req: Request) => {
   try {
-    // Fetch all users who have connected Gmail.
+    // Fetch all Gmail integrations (a user may have multiple accounts).
     const { data: integrations, error: intErr } = await admin
       .from("integrations")
-      .select("user_id, access_token, refresh_token, metadata")
+      .select("id, user_id, access_token, refresh_token, label, metadata")
       .eq("provider", "gmail");
 
     if (intErr) throw intErr;
@@ -127,7 +129,7 @@ serve(async (_req: Request) => {
         // Refresh the access token each run.
         const refreshed = await refreshAccessToken(row.refresh_token);
         if (!refreshed) {
-          console.warn(`Skipping user ${row.user_id}: token refresh failed`);
+          console.warn(`Skipping ${row.label} (user ${row.user_id}): token refresh failed`);
           continue;
         }
         const accessToken = refreshed.access_token;
@@ -136,13 +138,12 @@ serve(async (_req: Request) => {
         await admin
           .from("integrations")
           .update({ access_token: accessToken })
-          .eq("user_id", row.user_id)
-          .eq("provider", "gmail");
+          .eq("id", row.id);
 
         // Find the "todo" label.
         const labelId = await getLabelId(accessToken);
         if (!labelId) {
-          console.warn(`Skipping user ${row.user_id}: no "todo" label found`);
+          console.warn(`Skipping ${row.label} (user ${row.user_id}): no "todo" label found`);
           continue;
         }
 
