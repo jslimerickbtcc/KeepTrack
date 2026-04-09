@@ -137,11 +137,7 @@ async function signIn() {
   }
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: {
-      redirectTo: window.location.origin + window.location.pathname,
-      scopes: "https://www.googleapis.com/auth/gmail.readonly",
-      queryParams: { access_type: "offline", prompt: "consent" },
-    },
+    options: { redirectTo: window.location.origin + window.location.pathname },
   });
   if (error) alert("Sign-in failed: " + error.message);
 }
@@ -339,39 +335,54 @@ async function fetchIntegrations() {
 
 async function connectGmail() {
   if (isMock()) return;
-  const { data: sessionData } = await supabase.auth.getSession();
-  const s = sessionData?.session;
-  if (!s?.provider_token) {
-    alert(
-      "Gmail access token not available. Please sign out and sign back in to grant Gmail permissions.",
-    );
-    return;
-  }
-  // Prompt for a label if they already have one connected.
+
+  // Prompt for a label to distinguish accounts.
   let label = "Default";
   if (gmailIntegrations.length > 0) {
     const input = prompt("Label for this Gmail account (e.g. Work, Personal):");
     if (!input) return; // Cancelled.
     label = input.trim() || "Default";
   }
-  const { error } = await supabase.from("integrations").insert({
-    user_id: s.user.id,
-    provider: "gmail",
-    access_token: s.provider_token,
-    refresh_token: s.provider_refresh_token ?? null,
-    scope: "gmail.readonly",
-    label,
-  });
-  if (error) {
-    if (error.code === "23505") {
-      alert(`A Gmail connection labeled "${label}" already exists. Use a different label.`);
-    } else {
-      alert("Failed to connect Gmail: " + error.message);
-    }
+
+  // Call the gmail-auth-start Edge Function to get a Google OAuth URL.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) {
+    alert("Not signed in. Please sign in first.");
     return;
   }
-  await fetchIntegrations();
-  renderIntegrationsModal();
+
+  try {
+    const res = await fetch(
+      `${config.SUPABASE_URL}/functions/v1/gmail-auth-start`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          apikey: config.SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ label }),
+      },
+    );
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("Failed to start Gmail connection: " + (err.error ?? res.statusText));
+      return;
+    }
+
+    const { url } = await res.json();
+
+    // Open the Google OAuth consent screen in a popup.
+    const popup = window.open(url, "gmail-auth", "popup=true,width=600,height=700");
+    if (!popup) {
+      alert("Popup blocked — please allow popups for this site and try again.");
+      return;
+    }
+  } catch (err) {
+    alert("Failed to connect Gmail: " + err.message);
+  }
 }
 
 async function disconnectIntegration(id) {
@@ -1096,6 +1107,17 @@ els.slackForm.addEventListener("submit", saveSlackIntegration);
 els.intModal.querySelectorAll("[data-close]").forEach((el) =>
   el.addEventListener("click", closeIntegrations),
 );
+
+// Listen for the Gmail OAuth popup completing.
+window.addEventListener("message", async (e) => {
+  if (e.data?.type !== "gmail-connected") return;
+  if (e.data.ok) {
+    await fetchIntegrations();
+    renderIntegrationsModal();
+  } else if (e.data.error) {
+    alert("Gmail connection failed: " + e.data.error);
+  }
+});
 
 function isTextInput(el) {
   if (!el) return false;
