@@ -79,7 +79,16 @@ interface GmailMessage {
   snippet: string;
   payload?: {
     headers?: { name: string; value: string }[];
+    body?: { data?: string };
+    parts?: GmailPart[];
+    mimeType?: string;
   };
+}
+
+interface GmailPart {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: GmailPart[];
 }
 
 async function listThreads(
@@ -104,17 +113,79 @@ async function listThreads(
 async function getThread(
   accessToken: string,
   threadId: string,
-): Promise<GmailMessage | null> {
-  // Fetch the thread — the first message has the subject.
+): Promise<{ subject: string; body: string; snippet: string } | null> {
   const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=metadata&metadataHeaders=Subject`,
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   if (!res.ok) return null;
   const data = await res.json();
   const firstMsg = data.messages?.[0];
   if (!firstMsg) return null;
-  return { id: data.id, snippet: firstMsg.snippet, payload: firstMsg.payload };
+
+  const subject =
+    firstMsg.payload?.headers?.find(
+      (h: { name: string }) => h.name === "Subject",
+    )?.value ?? firstMsg.snippet ?? "Gmail task";
+
+  // Extract plain text body from the message parts.
+  const body = extractTextBody(firstMsg.payload) ?? firstMsg.snippet ?? "";
+
+  return { subject, body, snippet: firstMsg.snippet ?? "" };
+}
+
+// Recursively extract text/plain content from a Gmail message payload.
+function extractTextBody(payload: GmailPart | undefined): string | null {
+  if (!payload) return null;
+
+  // Direct body on this part.
+  if (payload.mimeType === "text/plain" && payload.body?.data) {
+    return decodeBase64Url(payload.body.data);
+  }
+
+  // Recurse into multipart children.
+  if (payload.parts) {
+    // Prefer text/plain over text/html.
+    for (const part of payload.parts) {
+      if (part.mimeType === "text/plain" && part.body?.data) {
+        return decodeBase64Url(part.body.data);
+      }
+    }
+    // Fallback: recurse deeper.
+    for (const part of payload.parts) {
+      const found = extractTextBody(part);
+      if (found) return found;
+    }
+  }
+
+  // Last resort: if this part has a body and it's text/html, strip tags.
+  if (payload.mimeType === "text/html" && payload.body?.data) {
+    const html = decodeBase64Url(payload.body.data);
+    return stripHtml(html);
+  }
+
+  return null;
+}
+
+function decodeBase64Url(data: string): string {
+  // Gmail uses URL-safe base64 encoding.
+  const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  return new TextDecoder().decode(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ---------- Main handler ----------
@@ -182,24 +253,27 @@ serve(async (_req: Request) => {
             continue;
           }
 
-          // Fetch the thread to get the subject from the first message.
+          // Fetch the thread to get the subject and body.
           const thread = await getThread(accessToken, stub.id);
-          const subject =
-            thread?.payload?.headers?.find((h) => h.name === "Subject")?.value ??
-            thread?.snippet ??
-            "Gmail task";
+          const subject = thread?.subject ?? "Gmail task";
 
           logs.push(`  Importing: "${subject}" (thread ${stub.id})`);
-          // Use #all instead of #inbox so the link works even if the message
-          // has been archived. This URL opens in the Gmail app on mobile.
           const sourceUrl = `https://mail.google.com/mail/u/0/#all/${stub.id}`;
+
+          // Build notes: email body (truncated) + link.
+          const bodyPreview = (thread?.body ?? "")
+            .slice(0, 2000)
+            .trim();
+          const notes = bodyPreview
+            ? `${bodyPreview}\n\n📧 ${sourceUrl}`
+            : `📧 ${sourceUrl}`;
 
           const { error: insertErr } = await admin.from("tasks").insert({
             user_id: row.user_id,
             title: subject,
             gmail_message_id: stub.id,
             source_url: sourceUrl,
-            notes: `📧 ${sourceUrl}`,
+            notes,
             priority: "med",
           });
 
