@@ -159,6 +159,39 @@
       </div>
     </div>
 
+    <!-- Gmail completion modal -->
+    <div id="gmail-done-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-panel modal-panel-sm" role="dialog" aria-modal="true" aria-labelledby="gmail-done-title">
+        <header class="modal-header">
+          <h2 id="gmail-done-title">Email completed</h2>
+          <button class="btn link" data-close aria-label="Close">×</button>
+        </header>
+
+        <div class="edit-form">
+          <div class="field">
+            <label class="checkbox-row">
+              <input id="gmail-done-archive" type="checkbox" checked />
+              <span>Remove from inbox</span>
+            </label>
+          </div>
+
+          <div class="field">
+            <label for="gmail-done-label">Apply a Gmail label</label>
+            <select id="gmail-done-label">
+              <option value="">None</option>
+            </select>
+          </div>
+
+          <footer class="modal-footer">
+            <button type="button" class="btn" id="gmail-done-skip">Skip</button>
+            <div class="spacer"></div>
+            <button type="button" class="btn primary" id="gmail-done-confirm">Done</button>
+          </footer>
+        </div>
+      </div>
+    </div>
+
     <!-- Integrations modal -->
     <div id="integrations-modal" class="modal" hidden>
       <div class="modal-backdrop" data-close></div>

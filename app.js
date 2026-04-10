@@ -64,6 +64,12 @@ const els = {
   sortBy: $("sort-by"),
   manageTagsBtn: $("manage-tags-btn"),
   integrationsBtn: $("integrations-btn"),
+  // Gmail completion modal
+  gmailDoneModal: $("gmail-done-modal"),
+  gmailDoneArchive: $("gmail-done-archive"),
+  gmailDoneLabel: $("gmail-done-label"),
+  gmailDoneConfirm: $("gmail-done-confirm"),
+  gmailDoneSkip: $("gmail-done-skip"),
   // Integrations modal
   intModal: $("integrations-modal"),
   gmailConnect: $("gmail-connect"),
@@ -437,20 +443,78 @@ async function saveSlackIntegration(e) {
   renderIntegrationsModal();
 }
 
-async function removeGmailLabel(threadId) {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData?.session?.access_token;
-  if (!token) return;
+let pendingGmailThreadId = null;
 
-  await fetch(`${config.SUPABASE_URL}/functions/v1/gmail-complete`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      apikey: config.SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({ thread_id: threadId }),
-  });
+async function openGmailDoneModal(threadId) {
+  pendingGmailThreadId = threadId;
+  els.gmailDoneArchive.checked = true;
+  els.gmailDoneLabel.innerHTML = '<option value="">None</option>';
+  els.gmailDoneModal.hidden = false;
+
+  // Fetch the user's Gmail labels in the background.
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) return;
+
+    const res = await fetch(`${config.SUPABASE_URL}/functions/v1/gmail-complete`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: config.SUPABASE_ANON_KEY,
+      },
+    });
+    if (!res.ok) return;
+    const { labels } = await res.json();
+    for (const label of labels ?? []) {
+      if (label.name.toLowerCase() === "todo") continue; // Skip the todo label itself.
+      const opt = document.createElement("option");
+      opt.value = label.id;
+      opt.textContent = label.name;
+      els.gmailDoneLabel.append(opt);
+    }
+  } catch (err) {
+    console.warn("Failed to fetch Gmail labels:", err);
+  }
+}
+
+function closeGmailDoneModal() {
+  els.gmailDoneModal.hidden = true;
+  pendingGmailThreadId = null;
+}
+
+async function confirmGmailDone() {
+  if (!pendingGmailThreadId) return;
+  const threadId = pendingGmailThreadId;
+  const archive = els.gmailDoneArchive.checked;
+  const applyLabelId = els.gmailDoneLabel.value || null;
+
+  closeGmailDoneModal();
+
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) return;
+
+    await fetch(`${config.SUPABASE_URL}/functions/v1/gmail-complete`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        apikey: config.SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        thread_id: threadId,
+        archive,
+        apply_label_id: applyLabelId,
+      }),
+    });
+  } catch (err) {
+    console.warn("Failed to update Gmail thread:", err);
+  }
+}
+
+function skipGmailDone() {
+  closeGmailDoneModal();
 }
 
 function openIntegrations() {
@@ -641,13 +705,11 @@ function render() {
       await updateTask(t.id, {
         completed_at: check.checked ? new Date().toISOString() : null,
       });
-      // If completing a Gmail task, remove the "todo" label in Gmail.
-      if (check.checked && t.gmail_message_id && !isMock()) {
-        removeGmailLabel(t.gmail_message_id).catch((err) =>
-          console.warn("Failed to remove Gmail label:", err),
-        );
-      }
       await refresh();
+      // If completing a Gmail task, show the completion modal.
+      if (check.checked && t.gmail_message_id && !isMock()) {
+        openGmailDoneModal(t.gmail_message_id);
+      }
     });
 
     if (justDoneIds.has(t.id)) {
@@ -1152,6 +1214,12 @@ els.tagsModal.querySelectorAll("[data-close]").forEach((el) =>
   el.addEventListener("click", closeTagManager),
 );
 
+els.gmailDoneConfirm.addEventListener("click", confirmGmailDone);
+els.gmailDoneSkip.addEventListener("click", skipGmailDone);
+els.gmailDoneModal.querySelectorAll("[data-close]").forEach((el) =>
+  el.addEventListener("click", closeGmailDoneModal),
+);
+
 els.integrationsBtn.addEventListener("click", openIntegrations);
 els.gmailConnect.addEventListener("click", connectGmail);
 els.slackForm.addEventListener("submit", saveSlackIntegration);
@@ -1190,6 +1258,10 @@ function findTaskById(id) {
 document.addEventListener("keydown", (e) => {
   // Escape: close whichever modal is open.
   if (e.key === "Escape") {
+    if (!els.gmailDoneModal.hidden) {
+      closeGmailDoneModal();
+      return;
+    }
     if (!els.intModal.hidden) {
       closeIntegrations();
       return;
@@ -1215,7 +1287,7 @@ document.addEventListener("keydown", (e) => {
 
   // The remaining shortcuts only apply when no modal is open and the user
   // isn't typing into a text field.
-  const modalOpen = !els.editModal.hidden || !els.tagsModal.hidden || !els.intModal.hidden;
+  const modalOpen = !els.editModal.hidden || !els.tagsModal.hidden || !els.intModal.hidden || !els.gmailDoneModal.hidden;
   if (modalOpen) return;
   if (isTextInput(document.activeElement)) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;

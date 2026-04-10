@@ -1,7 +1,8 @@
 // gmail-complete — Supabase Edge Function (Deno)
 //
-// Called when a user completes a Gmail-sourced task. Removes the "todo"
-// label from the Gmail thread so it clears out of the user's todo view.
+// Two modes:
+//   GET  — returns the user's Gmail labels (for the completion modal)
+//   POST — removes "todo" label, optionally archives, optionally applies another label
 //
 // Required env:
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -20,12 +21,17 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type, x-client-info, apikey",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-async function refreshAccessToken(
-  refreshToken: string,
-): Promise<string | null> {
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function refreshAccessToken(refreshToken: string): Promise<string | null> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -41,23 +47,27 @@ async function refreshAccessToken(
   return data.access_token ?? null;
 }
 
-async function getLabelId(accessToken: string): Promise<string | null> {
+async function getLabels(
+  accessToken: string,
+): Promise<{ id: string; name: string; type: string }[]> {
   const res = await fetch(
     "https://gmail.googleapis.com/gmail/v1/users/me/labels",
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   const data = await res.json();
-  const label = data.labels?.find(
-    (l: { name: string }) => l.name.toLowerCase() === "todo",
-  );
-  return label?.id ?? null;
+  return (data.labels ?? []).map((l: { id: string; name: string; type: string }) => ({
+    id: l.id,
+    name: l.name,
+    type: l.type,
+  }));
 }
 
-async function removeLabelFromThread(
+async function modifyThread(
   accessToken: string,
   threadId: string,
-  labelId: string,
+  addLabelIds: string[],
+  removeLabelIds: string[],
 ): Promise<boolean> {
   const res = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}/modify`,
@@ -67,12 +77,34 @@ async function removeLabelFromThread(
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        removeLabelIds: [labelId],
-      }),
+      body: JSON.stringify({ addLabelIds, removeLabelIds }),
     },
   );
   return res.ok;
+}
+
+async function verifyUser(req: Request) {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return null;
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const jwt = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await supabase.auth.getUser(jwt);
+  if (error || !user) return null;
+  return user;
+}
+
+async function getAccessTokenForUser(userId: string): Promise<string | null> {
+  const { data: integrations } = await admin
+    .from("integrations")
+    .select("refresh_token")
+    .eq("user_id", userId)
+    .eq("provider", "gmail");
+
+  for (const integration of integrations ?? []) {
+    const token = await refreshAccessToken(integration.refresh_token);
+    if (token) return token;
+  }
+  return null;
 }
 
 serve(async (req: Request) => {
@@ -80,40 +112,40 @@ serve(async (req: Request) => {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
+  // ---------- GET: return user's Gmail labels ----------
+  if (req.method === "GET") {
+    const user = await verifyUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
+
+    const accessToken = await getAccessTokenForUser(user.id);
+    if (!accessToken) return jsonResponse({ labels: [] });
+
+    const allLabels = await getLabels(accessToken);
+    // Return user-created labels only, sorted alphabetically.
+    const userLabels = allLabels
+      .filter((l) => l.type === "user")
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return jsonResponse({ labels: userLabels });
+  }
+
+  // ---------- POST: complete a Gmail task ----------
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405, headers: corsHeaders });
   }
 
   try {
-    // Verify the user.
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing auth" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-    const jwt = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(jwt);
-    if (authErr || !user) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const user = await verifyUser(req);
+    if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
 
     const body = await req.json();
     const threadId = body.thread_id;
-    if (!threadId) {
-      return new Response(JSON.stringify({ error: "Missing thread_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!threadId) return jsonResponse({ error: "Missing thread_id" }, 400);
 
-    // Find all Gmail integrations for this user (they might have multiple).
+    const archive = body.archive === true;
+    const applyLabelId = body.apply_label_id ?? null; // Gmail label ID to add
+
+    // Find all Gmail integrations for this user.
     const { data: integrations } = await admin
       .from("integrations")
       .select("id, refresh_token")
@@ -121,35 +153,37 @@ serve(async (req: Request) => {
       .eq("provider", "gmail");
 
     if (!integrations?.length) {
-      return new Response(JSON.stringify({ ok: false, reason: "No Gmail integration" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ ok: false, reason: "No Gmail integration" });
     }
 
-    // Try each integration until we find the one that owns this thread.
-    let removed = false;
+    // Try each integration until we find one that works.
+    let success = false;
     for (const integration of integrations) {
       const accessToken = await refreshAccessToken(integration.refresh_token);
       if (!accessToken) continue;
 
-      const labelId = await getLabelId(accessToken);
-      if (!labelId) continue;
+      const allLabels = await getLabels(accessToken);
+      const todoLabel = allLabels.find(
+        (l) => l.name.toLowerCase() === "todo",
+      );
+      if (!todoLabel) continue;
 
-      const ok = await removeLabelFromThread(accessToken, threadId, labelId);
+      // Build label modifications.
+      const removeLabelIds = [todoLabel.id];
+      if (archive) removeLabelIds.push("INBOX"); // Removing INBOX = archive.
+      const addLabelIds: string[] = [];
+      if (applyLabelId) addLabelIds.push(applyLabelId);
+
+      const ok = await modifyThread(accessToken, threadId, addLabelIds, removeLabelIds);
       if (ok) {
-        removed = true;
+        success = true;
         break;
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, removed }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ ok: true, success });
   } catch (err) {
     console.error("gmail-complete error:", err);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse({ error: String(err) }, 500);
   }
 });
