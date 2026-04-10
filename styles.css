@@ -41,16 +41,19 @@ body {
   gap: 10px;
 }
 
-.topbar-logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-}
-
 .topbar h1 {
   font-size: 22px;
   margin: 0;
   letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topbar-check {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
 .auth-area {
