@@ -660,7 +660,19 @@ function render() {
 
   // ---------- Group by due date ----------
   const groups = groupByDueBucket(list);
-  for (const g of groups) g.tasks.sort(innerSort);
+  for (const g of groups) {
+    // "Next week" and "Beyond" sort by due date ascending, then innerSort.
+    if (g.key === "next-week" || g.key === "beyond") {
+      g.tasks.sort((a, b) => {
+        const da = a.due_at ?? "";
+        const db = b.due_at ?? "";
+        if (da !== db) return da.localeCompare(db);
+        return innerSort(a, b);
+      });
+    } else {
+      g.tasks.sort(innerSort);
+    }
+  }
 
   els.taskList.innerHTML = "";
   els.emptyHint.hidden = list.length > 0;
@@ -680,6 +692,8 @@ function render() {
     header.className = "section-header " + group.cssClass;
     header.textContent = group.label;
     parent.append(header);
+
+    const showDueDate = group.key === "next-week" || group.key === "beyond" || group.key === "overdue";
 
     for (const t of group.tasks) {
       const li = document.createElement("li");
@@ -737,6 +751,17 @@ function render() {
 
     const meta = document.createElement("div");
     meta.className = "meta";
+    if (showDueDate && t.due_at) {
+      const due = document.createElement("span");
+      due.className = "due-chip";
+      const d = new Date(t.due_at);
+      due.textContent = d.toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+      meta.append(due);
+    }
     if (t.priority === "high" || t.priority === "low") {
       const p = document.createElement("span");
       p.className = `priority-chip priority-${t.priority}`;
