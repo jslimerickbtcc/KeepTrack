@@ -120,16 +120,19 @@ async function getThread(
   );
   if (!res.ok) return null;
   const data = await res.json();
-  const firstMsg = data.messages?.[0];
-  if (!firstMsg) return null;
+  const messages = data.messages ?? [];
+  if (!messages.length) return null;
 
+  // Subject comes from the first message (thread subject).
+  const firstMsg = messages[0];
   const subject =
     firstMsg.payload?.headers?.find(
       (h: { name: string }) => h.name === "Subject",
     )?.value ?? firstMsg.snippet ?? "Gmail task";
 
-  // Extract plain text body from the message parts.
-  const body = extractTextBody(firstMsg.payload) ?? firstMsg.snippet ?? "";
+  // Body comes from the last message (most recent reply).
+  const lastMsg = messages[messages.length - 1];
+  const body = extractTextBody(lastMsg.payload) ?? lastMsg.snippet ?? "";
 
   return { subject, body, snippet: firstMsg.snippet ?? "" };
 }
