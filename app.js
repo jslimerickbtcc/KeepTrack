@@ -437,6 +437,22 @@ async function saveSlackIntegration(e) {
   renderIntegrationsModal();
 }
 
+async function removeGmailLabel(threadId) {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData?.session?.access_token;
+  if (!token) return;
+
+  await fetch(`${config.SUPABASE_URL}/functions/v1/gmail-complete`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      apikey: config.SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ thread_id: threadId }),
+  });
+}
+
 function openIntegrations() {
   renderIntegrationsModal();
   els.intModal.hidden = false;
@@ -625,6 +641,12 @@ function render() {
       await updateTask(t.id, {
         completed_at: check.checked ? new Date().toISOString() : null,
       });
+      // If completing a Gmail task, remove the "todo" label in Gmail.
+      if (check.checked && t.gmail_message_id && !isMock()) {
+        removeGmailLabel(t.gmail_message_id).catch((err) =>
+          console.warn("Failed to remove Gmail label:", err),
+        );
+      }
       await refresh();
     });
 
@@ -669,6 +691,16 @@ function render() {
       chip.style.color = tag.color;
       chip.textContent = tag.name;
       meta.append(chip);
+    }
+    if (t.source_url) {
+      const link = document.createElement("a");
+      link.href = t.source_url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.className = "source-chip";
+      link.addEventListener("click", (e) => e.stopPropagation());
+      link.textContent = t.gmail_message_id ? "📧 Open in Gmail" : t.slack_message_ts ? "💬 Open in Slack" : "🔗 Source";
+      meta.append(link);
     }
     if (meta.childElementCount) body.append(meta);
 
