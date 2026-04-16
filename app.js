@@ -457,7 +457,8 @@ async function openGmailDoneModal(threadId) {
     const token = sessionData?.session?.access_token;
     if (!token) return;
 
-    const res = await fetch(`${config.SUPABASE_URL}/functions/v1/gmail-complete`, {
+    const url = `${config.SUPABASE_URL}/functions/v1/gmail-complete?thread_id=${encodeURIComponent(threadId)}`;
+    const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         apikey: config.SUPABASE_ANON_KEY,

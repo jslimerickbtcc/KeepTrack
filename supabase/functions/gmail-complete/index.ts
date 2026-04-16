@@ -107,17 +107,58 @@ async function getAccessTokenForUser(userId: string): Promise<string | null> {
   return null;
 }
 
+// Check whether a given access token can see a specific thread.
+// Used to route requests to the correct Gmail account when a user has
+// multiple accounts connected.
+async function canAccessThread(
+  accessToken: string,
+  threadId: string,
+): Promise<boolean> {
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=minimal`,
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  return res.ok;
+}
+
+// Find the access token for the Gmail account that owns the given thread.
+async function getAccessTokenForThread(
+  userId: string,
+  threadId: string,
+): Promise<string | null> {
+  const { data: integrations } = await admin
+    .from("integrations")
+    .select("refresh_token")
+    .eq("user_id", userId)
+    .eq("provider", "gmail");
+
+  for (const integration of integrations ?? []) {
+    const token = await refreshAccessToken(integration.refresh_token);
+    if (!token) continue;
+    if (await canAccessThread(token, threadId)) return token;
+  }
+  return null;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   // ---------- GET: return user's Gmail labels ----------
+  // Accepts ?thread_id=... to route to the correct Gmail account when the
+  // user has multiple accounts connected.
   if (req.method === "GET") {
     const user = await verifyUser(req);
     if (!user) return jsonResponse({ error: "Unauthorized" }, 401);
 
-    const accessToken = await getAccessTokenForUser(user.id);
+    const url = new URL(req.url);
+    const threadId = url.searchParams.get("thread_id");
+
+    const accessToken = threadId
+      ? await getAccessTokenForThread(user.id, threadId)
+      : await getAccessTokenForUser(user.id);
+
     if (!accessToken) return jsonResponse({ labels: [] });
 
     const allLabels = await getLabels(accessToken);
@@ -143,43 +184,27 @@ serve(async (req: Request) => {
     if (!threadId) return jsonResponse({ error: "Missing thread_id" }, 400);
 
     const archive = body.archive === true;
-    const applyLabelId = body.apply_label_id ?? null; // Gmail label ID to add
+    const applyLabelId = body.apply_label_id ?? null; // Gmail label ID (belongs to the thread's account)
 
-    // Find all Gmail integrations for this user.
-    const { data: integrations } = await admin
-      .from("integrations")
-      .select("id, refresh_token")
-      .eq("user_id", user.id)
-      .eq("provider", "gmail");
-
-    if (!integrations?.length) {
-      return jsonResponse({ ok: false, reason: "No Gmail integration" });
+    // Find the specific account that owns this thread. Label IDs are
+    // account-scoped, so we must operate on the right account.
+    const accessToken = await getAccessTokenForThread(user.id, threadId);
+    if (!accessToken) {
+      return jsonResponse({ ok: false, reason: "Thread not found in any connected account" });
     }
 
-    // Try each integration until we find one that works.
-    let success = false;
-    for (const integration of integrations) {
-      const accessToken = await refreshAccessToken(integration.refresh_token);
-      if (!accessToken) continue;
+    const allLabels = await getLabels(accessToken);
+    const todoLabel = allLabels.find(
+      (l) => l.name.toLowerCase() === "todo",
+    );
 
-      const allLabels = await getLabels(accessToken);
-      const todoLabel = allLabels.find(
-        (l) => l.name.toLowerCase() === "todo",
-      );
-      if (!todoLabel) continue;
+    const removeLabelIds: string[] = [];
+    if (todoLabel) removeLabelIds.push(todoLabel.id);
+    if (archive) removeLabelIds.push("INBOX"); // Removing INBOX = archive.
+    const addLabelIds: string[] = [];
+    if (applyLabelId) addLabelIds.push(applyLabelId);
 
-      // Build label modifications.
-      const removeLabelIds = [todoLabel.id];
-      if (archive) removeLabelIds.push("INBOX"); // Removing INBOX = archive.
-      const addLabelIds: string[] = [];
-      if (applyLabelId) addLabelIds.push(applyLabelId);
-
-      const ok = await modifyThread(accessToken, threadId, addLabelIds, removeLabelIds);
-      if (ok) {
-        success = true;
-        break;
-      }
-    }
+    const success = await modifyThread(accessToken, threadId, addLabelIds, removeLabelIds);
 
     return jsonResponse({ ok: true, success });
   } catch (err) {
