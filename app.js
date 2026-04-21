@@ -596,6 +596,7 @@ function render() {
   if (session?.user) {
     const email = document.createElement("span");
     email.textContent = session.user.email ?? "signed in";
+    email.title = email.textContent;
     const out = document.createElement("button");
     out.className = "btn link";
     out.textContent = "Sign out";

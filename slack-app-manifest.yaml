@@ -32,8 +32,7 @@ oauth_config:
 
 settings:
   event_subscriptions:
-    # Replace with your Supabase Edge Function URL:
-    request_url: https://YOUR-PROJECT.supabase.co/functions/v1/slack-events
+    request_url: https://dzdizortbzvfeiksfylp.supabase.co/functions/v1/slack-events
     bot_events:
       - reaction_added
   org_deploy_enabled: false

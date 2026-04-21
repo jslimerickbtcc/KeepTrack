@@ -25,6 +25,7 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 body {
@@ -39,6 +40,11 @@ body {
   justify-content: space-between;
   padding: 16px 0;
   gap: 10px;
+  min-width: 0;
+}
+
+.topbar h1 {
+  flex-shrink: 0;
 }
 
 .topbar h1 {
@@ -62,6 +68,20 @@ body {
   gap: 8px;
   color: var(--muted);
   font-size: 14px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.auth-area > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-area .btn {
+  flex-shrink: 0;
 }
 
 .empty {
