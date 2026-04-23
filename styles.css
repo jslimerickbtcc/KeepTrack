@@ -897,3 +897,22 @@ body {
 .slack-connect-form input[type="text"]:focus {
   border-color: var(--accent);
 }
+
+/* ---------- mobile: prevent iOS Safari focus-zoom ---------- */
+/* iOS Safari zooms the page when focusing any form control whose
+   font-size is below 16px. Bump all controls to 16px on small screens. */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea,
+  .new-task input,
+  .toolbar select,
+  .edit-form input[type="text"],
+  .edit-form input[type="date"],
+  .edit-form textarea,
+  .edit-form select,
+  .new-tag-form input[type="text"],
+  .slack-connect-form input[type="text"] {
+    font-size: 16px;
+  }
+}
